@@ -1106,7 +1106,7 @@
             },
 
             startPractice(qs) {
-                STATE.activeQuestions = [...qs].sort(() => Math.random() - 0.5); // Shuffle
+                STATE.activeQuestions = [...qs].sort((a, b) => a.q_num - b.q_num); // Ordered sequentially
                 STATE.qIndex = 0;
                 this.loadQuestion();
             },
