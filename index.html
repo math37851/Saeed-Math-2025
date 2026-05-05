@@ -564,6 +564,63 @@
         .students-table th { background: var(--primary); color: white; }
         .logout-btn { background: #dc3545; color: white; border: none; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-family: inherit; font-weight: bold;}
 
+    
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            z-index: 100000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-content {
+            background: white;
+            width: 90%; max-width: 800px;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            transform: translateY(-20px);
+            transition: transform 0.3s;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-overlay.active .modal-content { transform: translateY(0); }
+        .modal-close {
+            position: absolute; top: 1.5rem; left: 1.5rem;
+            background: none; border: none; font-size: 1.5rem; color: #999;
+            cursor: pointer;
+        }
+        .modal-close:hover { color: #333; }
+        
+        .student-modal-header { border-bottom: 2px solid #eee; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        .student-modal-header h2 { margin: 0; color: var(--primary); }
+        
+        .stats-grid-detailed { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .stat-box { background: #f8f9fa; border-radius: 10px; padding: 1rem; text-align: center; border: 1px solid #ddd; }
+        .stat-box h4 { margin-top: 0; color: var(--secondary); font-size: 1.1rem; }
+        .stat-box p { margin: 0; font-size: 0.9rem; color: #555; }
+        
+        .admin-actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 2rem; border-top: 2px solid #eee; padding-top: 1.5rem; }
+        .btn-action { padding: 0.8rem 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: inherit; display: flex; align-items: center; gap: 0.5rem; color: white; }
+        .btn-edit { background: #3498db; }
+        .btn-freeze { background: #f39c12; }
+        .btn-unfreeze { background: #2ecc71; }
+        .btn-delete { background: #e74c3c; }
+        
+        .action-btn-sm { background: var(--secondary); color: white; border: none; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.9rem; transition: background 0.2s;}
+        .action-btn-sm:hover { background: var(--primary); }
+        
+        .export-btn { background: #27ae60; color: white; border: none; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-family: inherit; font-weight: bold; margin-left: 1rem;}
+        .export-btn:hover { background: #219653; }
+        .frozen-row { opacity: 0.6; background: #ffebee; }
+
     </style>
 </head>
 <body>
@@ -593,11 +650,35 @@
         </div>
     </div>
 
+    
+    <!-- Student Details Modal -->
+    <div id="student-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeStudentModal()"><i class="fa-solid fa-times"></i></button>
+            <div class="student-modal-header">
+                <h2 id="modal-student-name">اسم الطالب</h2>
+                <p style="margin: 0.5rem 0 0 0; color: #666;"><i class="fa-solid fa-phone"></i> <span id="modal-student-username"></span> | الصف: <span id="modal-student-grade"></span> | الحالة: <strong id="modal-student-status"></strong></p>
+            </div>
+            
+            <h3 style="margin-bottom: 1rem; color: #333;"><i class="fa-solid fa-chart-pie"></i> التحليل التفصيلي للأسئلة المحلولة</h3>
+            <div id="modal-stats-container" class="stats-grid-detailed">
+                <!-- Populated by JS -->
+            </div>
+            
+            <div class="admin-actions">
+                <button class="btn-action btn-edit" onclick="editStudentPassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
+                <button id="modal-freeze-btn" class="btn-action btn-freeze" onclick="toggleFreezeStudent()"><i class="fa-solid fa-snowflake"></i> تجميد الحساب</button>
+                <button class="btn-action btn-delete" onclick="deleteStudent()"><i class="fa-solid fa-trash"></i> حذف الطالب</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Teacher Dashboard -->
     <div id="teacher-dashboard">
         <div class="dashboard-container">
             <div class="dash-header">
                 <h2 style="color:var(--primary); margin:0;"><i class="fa-solid fa-chalkboard-user"></i> لوحة تحكم المعلم</h2>
+                <button class="export-btn" onclick="exportStudentsCSV()"><i class="fa-solid fa-file-excel"></i> تصدير Excel</button>
                 <button class="logout-btn" onclick="logout()"><i class="fa-solid fa-sign-out-alt"></i> تسجيل الخروج</button>
             </div>
             <div class="dash-grid">
@@ -639,6 +720,7 @@
                                 <th>الأسئلة المحلولة</th>
                                 <th>إجمالي النقاط</th>
                                 <th>الدقة المئوية</th>
+                                <th>إجراءات</th>
                             </tr>
                         </thead>
                         <tbody id="students-tbody">
@@ -858,6 +940,11 @@
                     if(snapshot.exists()) {
                         const data = snapshot.val();
                         if(data.password === pass) {
+                            if(data.status === 'frozen') {
+                                err.style.color = "#ff6b6b";
+                                err.innerText = "تم تجميد حسابك من قبل المعلم. لا يمكنك الدخول.";
+                                return;
+                            }
                             CURRENT_USER = user;
                             localStorage.setItem('k_role', 'student');
                             localStorage.setItem('k_user', user);
@@ -954,7 +1041,7 @@
                         const p = data.progress || {totalSolved:0, correctAnswers:0, totalPoints:0};
                         const accuracy = p.totalSolved > 0 ? Math.round((p.correctAnswers / p.totalSolved) * 100) : 0;
                         tbody.innerHTML += `
-                            <tr>
+                            <tr class="${data.status === 'frozen' ? 'frozen-row' : ''}">
                                 <td><strong>${data.name}</strong><br><small style="color:gray;"><i class="fa-solid fa-phone"></i> ${data.username}</small></td>
                                 <td>${data.grade}</td>
                                 <td>${p.totalSolved} من 180</td>
@@ -965,11 +1052,12 @@
                                     </div>
                                     <small style="font-weight:bold; color:#555;">${accuracy}%</small>
                                 </td>
+                                <td><button class="action-btn-sm" onclick="openStudentDetails('${data.username}')"><i class="fa-solid fa-eye"></i> تفاصيل</button></td>
                             </tr>
                         `;
                     });
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">لا يوجد طلاب مسجلين حتى الآن.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب مسجلين حتى الآن.</td></tr>';
                 }
             });
         }
