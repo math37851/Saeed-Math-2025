@@ -1062,6 +1062,147 @@
             });
         }
         
+        
+        // --- ADMIN FUNCTIONS ---
+        let CURRENT_MODAL_STUDENT = null;
+
+        function openStudentDetails(username) {
+            db.ref('students/' + username).once('value').then(snap => {
+                if(!snap.exists()) return;
+                const data = snap.val();
+                CURRENT_MODAL_STUDENT = data;
+                
+                document.getElementById('modal-student-name').innerText = data.name;
+                document.getElementById('modal-student-username').innerText = data.username;
+                document.getElementById('modal-student-grade').innerText = data.grade;
+                
+                const statusElem = document.getElementById('modal-student-status');
+                const freezeBtn = document.getElementById('modal-freeze-btn');
+                if(data.status === 'frozen') {
+                    statusElem.innerText = "مجمد ❄️";
+                    statusElem.style.color = "#e74c3c";
+                    freezeBtn.className = "btn-action btn-unfreeze";
+                    freezeBtn.innerHTML = '<i class="fa-solid fa-fire"></i> تفعيل الحساب';
+                } else {
+                    statusElem.innerText = "نشط 🟢";
+                    statusElem.style.color = "#2ecc71";
+                    freezeBtn.className = "btn-action btn-freeze";
+                    freezeBtn.innerHTML = '<i class="fa-solid fa-snowflake"></i> تجميد الحساب';
+                }
+
+                // Calculate Detailed Stats
+                const p = data.progress || { solvedIds: [] };
+                const solvedIds = p.solvedIds || [];
+                
+                const statsByYear = {};
+                solvedIds.forEach(id => {
+                    const q = QUESTIONS_DATA.find(x => x.id === id);
+                    if(q) {
+                        if(!statsByYear[q.year]) statsByYear[q.year] = {3:0, 4:0, 5:0, total:0};
+                        statsByYear[q.year][q.points]++;
+                        statsByYear[q.year].total++;
+                    }
+                });
+
+                const container = document.getElementById('modal-stats-container');
+                container.innerHTML = '';
+                
+                if(Object.keys(statsByYear).length === 0) {
+                    container.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#999;">لم يقم الطالب بحل أي أسئلة بعد.</p>';
+                } else {
+                    Object.keys(statsByYear).sort((a,b)=>b-a).forEach(year => {
+                        const s = statsByYear[year];
+                        container.innerHTML += `
+                            <div class="stat-box">
+                                <h4>عام ${year}</h4>
+                                <p style="font-weight:bold; color:var(--primary); margin-bottom: 5px;">مجموع المحلول: ${s.total}</p>
+                                <p><span style="color:var(--level-3);">■</span> 3 نقاط: <strong>${s['3']}</strong></p>
+                                <p><span style="color:var(--level-4);">■</span> 4 نقاط: <strong>${s['4']}</strong></p>
+                                <p><span style="color:var(--level-5);">■</span> 5 نقاط: <strong>${s['5']}</strong></p>
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('student-modal').classList.add('active');
+            });
+        }
+
+        function closeStudentModal() {
+            document.getElementById('student-modal').classList.remove('active');
+            CURRENT_MODAL_STUDENT = null;
+        }
+
+        function toggleFreezeStudent() {
+            if(!CURRENT_MODAL_STUDENT) return;
+            const newStatus = CURRENT_MODAL_STUDENT.status === 'frozen' ? 'active' : 'frozen';
+            const actionText = newStatus === 'frozen' ? 'تجميد' : 'تفعيل';
+            
+            if(confirm(`هل أنت متأكد من ${actionText} حساب الطالب ${CURRENT_MODAL_STUDENT.name}؟`)) {
+                db.ref('students/' + CURRENT_MODAL_STUDENT.username).update({
+                    status: newStatus
+                }).then(() => {
+                    alert(`تم ${actionText} الحساب بنجاح.`);
+                    openStudentDetails(CURRENT_MODAL_STUDENT.username); // Refresh modal
+                });
+            }
+        }
+
+        function deleteStudent() {
+            if(!CURRENT_MODAL_STUDENT) return;
+            if(confirm(`⚠️ تحذير: هل أنت متأكد من حذف حساب الطالب ${CURRENT_MODAL_STUDENT.name} نهائياً؟ لا يمكن التراجع عن هذا الإجراء!`)) {
+                db.ref('students/' + CURRENT_MODAL_STUDENT.username).remove().then(() => {
+                    alert('تم حذف الطالب بنجاح.');
+                    closeStudentModal();
+                });
+            }
+        }
+
+        function editStudentPassword() {
+            if(!CURRENT_MODAL_STUDENT) return;
+            const newPass = prompt(`أدخل كلمة المرور الجديدة للطالب ${CURRENT_MODAL_STUDENT.name}:`, CURRENT_MODAL_STUDENT.password);
+            if(newPass && newPass.trim() !== '') {
+                db.ref('students/' + CURRENT_MODAL_STUDENT.username).update({
+                    password: newPass.trim()
+                }).then(() => {
+                    alert('تم تغيير كلمة المرور بنجاح.');
+                    CURRENT_MODAL_STUDENT.password = newPass.trim();
+                });
+            }
+        }
+
+        function exportStudentsCSV() {
+            db.ref('students').once('value').then(snapshot => {
+                if(!snapshot.exists()) {
+                    alert('لا توجد بيانات للتصدير.'); return;
+                }
+                
+                let csv = "\uFEFF"; // BOM for Arabic support in Excel
+                csv += 'اسم الطالب,رقم الجوال,الصف,حالة الحساب,إجمالي الأسئلة المحلولة,إجمالي النقاط,الدقة المئوية\n';
+                
+                snapshot.forEach(child => {
+                    const d = child.val();
+                    const p = d.progress || {};
+                    const totalSolved = p.totalSolved || 0;
+                    const points = p.totalPoints || 0;
+                    const accuracy = totalSolved > 0 ? Math.round(((p.correctAnswers || 0) / totalSolved) * 100) : 0;
+                    const status = d.status === 'frozen' ? 'مجمد' : 'نشط';
+                    
+                    csv += `"${d.name}","${d.username}","${d.grade}","${status}",${totalSolved},${points},"${accuracy}%"\n`;
+                });
+                
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'احصائيات_الطلاب_كانجارو.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        }
+
         function checkAuth() {
             const role = localStorage.getItem('k_role');
             if(role === 'teacher') {
