@@ -8,6 +8,7 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -885,6 +886,8 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const auth = firebase.auth();
+        const ADMIN_EMAIL = 'admin@kangaroo.invalid';
 
         let CURRENT_USER = null;
 
@@ -897,9 +900,6 @@
             const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
             return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
-
-        // To update teacher password: run sha256("newpassword").then(console.log) in browser console, then replace this hash
-        const TEACHER_HASH = "72466136f6cd040842fbec04999a83ddc9760ea33968f6d4a9a6a74629c77dc2";
 
         function showApp() {
             document.getElementById('login-overlay').style.display = 'none';
@@ -937,13 +937,20 @@
             }
 
             if(role === 'teacher') {
-                const passHash = await sha256(pass);
-                if(user === 'admin' && passHash === TEACHER_HASH) {
-                    localStorage.setItem('k_role', 'teacher');
-                    showTeacherDashboard();
-                } else {
+                if(user !== 'admin') {
                     err.innerText = "بيانات المعلم غير صحيحة!";
                     err.style.display = 'block';
+                    return;
+                }
+                err.innerText = "جاري التحقق...";
+                err.style.color = "white";
+                err.style.display = 'block';
+                try {
+                    await auth.signInWithEmailAndPassword(ADMIN_EMAIL, pass);
+                    // onAuthStateChanged will call showTeacherDashboard()
+                } catch(e) {
+                    err.style.color = "#ff6b6b";
+                    err.innerText = "بيانات المعلم غير صحيحة!";
                 }
             } else {
                 err.innerText = "جاري التحقق...";
@@ -979,8 +986,8 @@
                             localStorage.setItem('kangaroo_stats', JSON.stringify(STATE.stats));
                             app.updateHomeStats();
                             showApp();
-                            
                             setupStudentHeader(data.name);
+                            auth.signInAnonymously().catch(() => {}); // enables auth != null Firebase rules
                         } else {
                             err.style.color = "#ff6b6b";
                             err.innerText = "كلمة المرور غير صحيحة!";
@@ -1013,6 +1020,7 @@
         }
 
         function logout() {
+            auth.signOut();
             localStorage.removeItem('k_role');
             localStorage.removeItem('k_user');
             CURRENT_USER = null;
@@ -1222,42 +1230,51 @@
             });
         }
 
-        function checkAuth() {
-            const role = localStorage.getItem('k_role');
-            if(role === 'teacher') {
+        function restoreStudentSession() {
+            const user = localStorage.getItem('k_user');
+            if(!user) { showLogin(); return; }
+            CURRENT_USER = user;
+            db.ref('students/' + user).once('value').then(snap => {
+                if(snap.exists()) {
+                    const data = snap.val();
+                    setupStudentHeader(data.name);
+                    const p = data.progress;
+                    if(p) {
+                        STATE.stats.totalSolved = p.totalSolved || 0;
+                        STATE.stats.correctCount = p.correctAnswers || 0;
+                        STATE.stats.totalPoints = p.totalPoints || 0;
+                        STATE.stats.solvedIds = p.solvedIds || [];
+                    } else {
+                        STATE.stats.totalSolved = 0;
+                        STATE.stats.correctCount = 0;
+                        STATE.stats.totalPoints = 0;
+                        STATE.stats.solvedIds = [];
+                    }
+                    localStorage.setItem('kangaroo_stats', JSON.stringify(STATE.stats));
+                    app.updateHomeStats();
+                }
+                showApp();
+            }).catch(() => showApp());
+        }
+
+        auth.onAuthStateChanged(async (firebaseUser) => {
+            if(firebaseUser && firebaseUser.email === ADMIN_EMAIL) {
                 showTeacherDashboard();
-            } else if (role === 'student') {
-                const user = localStorage.getItem('k_user');
-                if(user) {
-                    CURRENT_USER = user;
-                    db.ref('students/' + user).once('value').then(snap => {
-                        if(snap.exists()){
-                            const data = snap.val();
-                            setupStudentHeader(data.name);
-                            const p = data.progress;
-                            if(p) {
-                                STATE.stats.totalSolved = p.totalSolved || 0;
-                                STATE.stats.correctCount = p.correctAnswers || 0;
-                                STATE.stats.totalPoints = p.totalPoints || 0;
-                                STATE.stats.solvedIds = p.solvedIds || [];
-                            } else {
-                                STATE.stats.totalSolved = 0;
-                                STATE.stats.correctCount = 0;
-                                STATE.stats.totalPoints = 0;
-                                STATE.stats.solvedIds = [];
-                            }
-                            localStorage.setItem('kangaroo_stats', JSON.stringify(STATE.stats));
-                            app.updateHomeStats();
-                        }
-                        showApp();
-                    }).catch(() => showApp());
+            } else if(firebaseUser && firebaseUser.isAnonymous) {
+                // Already logged in as student — skip if app is already showing
+                if(document.getElementById('login-overlay').style.display === 'none') return;
+                restoreStudentSession();
+            } else {
+                // No Firebase Auth session: check for legacy student session in localStorage
+                const role = localStorage.getItem('k_role');
+                const storedUser = localStorage.getItem('k_user');
+                if(role === 'student' && storedUser) {
+                    auth.signInAnonymously().catch(() => restoreStudentSession());
                 } else {
                     showLogin();
                 }
-            } else {
-                showLogin();
             }
-        }
+        });
 
         const STATE = {
             view: 'view-home',
@@ -1561,10 +1578,9 @@
         };
 
         window.onload = () => app.init();
-        // Hide app until auth is checked
+        // Hide app until Firebase Auth resolves (onAuthStateChanged handles routing)
         document.querySelector('header').style.display = 'none';
         document.querySelector('main').style.display = 'none';
-        checkAuth();
     </script>
 </body>
 </html>
