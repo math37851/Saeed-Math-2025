@@ -888,6 +888,15 @@
 
         let CURRENT_USER = null;
 
+        // SHA-256 hash helper (Web Crypto API — no library needed)
+        async function sha256(str) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // To update teacher password: run sha256("newpassword").then(console.log) in browser console, then replace this hash
+        const TEACHER_HASH = "72466136f6cd040842fbec04999a83ddc9760ea33968f6d4a9a6a74629c77dc2";
+
         function showApp() {
             document.getElementById('login-overlay').style.display = 'none';
             document.getElementById('teacher-dashboard').style.display = 'none';
@@ -910,13 +919,13 @@
             document.getElementById('teacher-dashboard').style.display = 'none';
         }
 
-        function attemptLogin() {
+        async function attemptLogin() {
             const role = document.getElementById('login-role').value;
             const user = document.getElementById('login-username').value.trim();
             const pass = document.getElementById('login-password').value.trim();
             const err = document.getElementById('login-error');
             err.style.display = 'none';
-            
+
             if(!user || !pass) {
                 err.innerText = "الرجاء إدخال اسم المستخدم وكلمة المرور!";
                 err.style.display = 'block';
@@ -924,7 +933,8 @@
             }
 
             if(role === 'teacher') {
-                if(user === 'admin' && pass === 'math2025') {
+                const passHash = await sha256(pass);
+                if(user === 'admin' && passHash === TEACHER_HASH) {
                     localStorage.setItem('k_role', 'teacher');
                     showTeacherDashboard();
                 } else {
@@ -935,11 +945,13 @@
                 err.innerText = "جاري التحقق...";
                 err.style.color = "white";
                 err.style.display = 'block';
-                
-                db.ref('students/' + user).once('value').then((snapshot) => {
+
+                db.ref('students/' + user).once('value').then(async (snapshot) => {
                     if(snapshot.exists()) {
                         const data = snapshot.val();
-                        if(data.password === pass) {
+                        const passHash = await sha256(pass);
+                        const storedHash = data.passwordHash || await sha256(data.password || '');
+                        if(storedHash === passHash) {
                             if(data.status === 'frozen') {
                                 err.style.color = "#ff6b6b";
                                 err.innerText = "تم تجميد حسابك من قبل المعلم. لا يمكنك الدخول.";
@@ -1003,7 +1015,7 @@
             location.reload();
         }
 
-        function addStudent() {
+        async function addStudent() {
             const name = document.getElementById('new-name').value.trim();
             const grade = document.getElementById('new-grade').value;
             const username = document.getElementById('new-username').value.trim();
@@ -1014,11 +1026,13 @@
                 return;
             }
 
+            const passwordHash = await sha256(password);
+
             db.ref('students/' + username).set({
                 name: name,
                 grade: grade,
                 username: username,
-                password: password,
+                passwordHash: passwordHash,
                 progress: { totalSolved: 0, correctAnswers: 0, totalPoints: 0 }
             }).then(() => {
                 document.getElementById('add-msg').style.display = 'block';
@@ -1158,15 +1172,16 @@
             }
         }
 
-        function editStudentPassword() {
+        async function editStudentPassword() {
             if(!CURRENT_MODAL_STUDENT) return;
-            const newPass = prompt(`أدخل كلمة المرور الجديدة للطالب ${CURRENT_MODAL_STUDENT.name}:`, CURRENT_MODAL_STUDENT.password);
+            const newPass = prompt(`أدخل كلمة المرور الجديدة للطالب ${CURRENT_MODAL_STUDENT.name}:`);
             if(newPass && newPass.trim() !== '') {
+                const newHash = await sha256(newPass.trim());
                 db.ref('students/' + CURRENT_MODAL_STUDENT.username).update({
-                    password: newPass.trim()
+                    passwordHash: newHash,
+                    password: null
                 }).then(() => {
                     alert('تم تغيير كلمة المرور بنجاح.');
-                    CURRENT_MODAL_STUDENT.password = newPass.trim();
                 });
             }
         }
