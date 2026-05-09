@@ -957,6 +957,9 @@
                 err.style.color = "white";
                 err.style.display = 'block';
 
+                // Must be authenticated before DB read (rules require auth != null)
+                await auth.signInAnonymously().catch(() => {});
+
                 db.ref('students/' + user).once('value').then(async (snapshot) => {
                     if(snapshot.exists()) {
                         const data = snapshot.val();
@@ -1085,6 +1088,10 @@
                 } else {
                     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب مسجلين حتى الآن.</td></tr>';
                 }
+            }, (error) => {
+                const tbody = document.getElementById('students-tbody');
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#e74c3c;padding:1rem;"><i class="fa-solid fa-triangle-exclamation"></i> خطأ في تحميل البيانات: ${escapeHTML(error.message)}</td></tr>`;
+                console.error('loadStudentsData:', error);
             });
         }
         
