@@ -1528,18 +1528,18 @@
                 if (isCorrect) {
                     fbBox.className = 'feedback-box explanation';
                     fbTitle.innerHTML = '<i class="fa-solid fa-check-circle"></i> إجابة صحيحة!';
-                    fbText.innerHTML = `<strong>أحسنت! الإجابة ${q.correct} هي الإجابة الصحيحة.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${q.explanation || ''}`;
+                    fbText.innerHTML = `<strong>أحسنت! الإجابة ${escapeHTML(q.correct)} هي الإجابة الصحيحة.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${escapeHTML(q.explanation || '')}`;
                 } else if (timeOut) {
                     fbBox.className = 'feedback-box wrong-msg';
                     fbTitle.innerHTML = '<i class="fa-solid fa-clock"></i> انتهى الوقت!';
-                    fbText.innerHTML = `<strong>الإجابة الصحيحة هي ${q.correct}.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${q.explanation || ''}`;
+                    fbText.innerHTML = `<strong>الإجابة الصحيحة هي ${escapeHTML(q.correct)}.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${escapeHTML(q.explanation || '')}`;
                 } else {
                     fbBox.className = 'feedback-box wrong-msg';
                     fbTitle.innerHTML = '<i class="fa-solid fa-times-circle"></i> إجابة غير صحيحة';
-                    fbText.innerHTML = `لقد اخترت <strong>${STATE.selectedOption}</strong>. <strong>الإجابة الصحيحة هي ${q.correct}.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${q.explanation || ''}`;
+                    fbText.innerHTML = `لقد اخترت <strong>${escapeHTML(STATE.selectedOption)}</strong>. <strong>الإجابة الصحيحة هي ${escapeHTML(q.correct)}.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${escapeHTML(q.explanation || '')}`;
                 }
-                
-                fbStrategy.innerHTML = q.strategy || '';
+
+                fbStrategy.innerHTML = escapeHTML(q.strategy || '');
                 document.getElementById('feedback-sec').style.display = 'block';
             },
 
