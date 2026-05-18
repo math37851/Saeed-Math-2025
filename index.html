@@ -1741,11 +1741,26 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        // كلمات تدل على خروج عن سياق الرياضيات
+        const OFF_TOPIC_WORDS = ['يوتيوب','تيك توك','لعبة','كرة','فيلم','أغنية','سياسة','رئيس','حرب','اخبار','واتساب','انستقرام','snapchat','youtube','tiktok','game','movie'];
+
+        function isOffTopic(text) {
+            const lower = text.toLowerCase();
+            return OFF_TOPIC_WORDS.some(w => lower.includes(w));
+        }
+
         async function sendAIMessage() {
             const input = document.getElementById('ai-input');
             const sendBtn = document.getElementById('ai-send-btn');
             const text = input.value.trim();
             if(!text || AI_STATE.isLoading) return;
+
+            if(isOffTopic(text)) {
+                input.value = '';
+                appendMessage('user', text);
+                appendMessage('ai', 'أنا هنا فقط لمساعدتك في فهم هذه المسألة الرياضية 😊 هل عندك سؤال عن الحل؟');
+                return;
+            }
 
             input.value = '';
             appendMessage('user', text);
