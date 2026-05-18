@@ -622,6 +622,99 @@
         .export-btn:hover { background: #219653; }
         .frozen-row { opacity: 0.6; background: #ffebee; }
 
+        /* ===== AI Chat Styles ===== */
+        .ai-chat-btn {
+            display: none;
+            margin-top: 1rem;
+            width: 100%;
+            padding: 0.9rem 1.5rem;
+            background: linear-gradient(135deg, #6366f1, #8A1538);
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.05rem;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            animation: fadeIn 0.4s;
+        }
+        .ai-chat-btn:hover { opacity: 0.9; transform: scale(1.01); }
+
+        .ai-chat-container {
+            display: none;
+            margin-top: 1rem;
+            background: var(--card);
+            border-radius: 1rem;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            animation: fadeIn 0.4s;
+        }
+        .ai-chat-header {
+            background: linear-gradient(135deg, #6366f1, #8A1538);
+            color: white;
+            padding: 0.85rem 1.25rem;
+            font-weight: 700;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .ai-messages {
+            height: 260px;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .ai-message {
+            max-width: 85%;
+            padding: 0.7rem 1rem;
+            border-radius: 1rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .ai-message.ai {
+            background: var(--border);
+            color: var(--text);
+            align-self: flex-start;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .ai-message.user {
+            background: #6366f1;
+            color: white;
+            align-self: flex-end;
+            border-bottom-left-radius: 0.25rem;
+        }
+        .ai-input-area {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--border);
+        }
+        .ai-input {
+            flex: 1;
+            padding: 0.65rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 0.95rem;
+            font-family: inherit;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .ai-send-btn {
+            padding: 0.65rem 1.1rem;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+        }
+        .ai-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ai-typing { font-style: italic; color: var(--text-muted); font-size: 0.9rem; }
+
     </style>
 </head>
 <body>
@@ -849,6 +942,25 @@
                 <div class="feedback-box strategy">
                     <h3><i class="fa-solid fa-brain"></i> استراتيجية التفكير</h3>
                     <div id="fb-strategy"></div>
+                </div>
+
+                <!-- AI Chat Button & Container -->
+                <button class="ai-chat-btn" id="ai-chat-btn" onclick="openAIChat()">
+                    <i class="fa-solid fa-robot"></i> اسأل المساعد الذكي — ساعدني في فهم الحل
+                </button>
+                <div class="ai-chat-container" id="ai-chat-container">
+                    <div class="ai-chat-header">
+                        <i class="fa-solid fa-robot"></i> المساعد الذكي لمسائل الرياضيات
+                    </div>
+                    <div class="ai-messages" id="ai-messages"></div>
+                    <div class="ai-input-area">
+                        <input type="text" id="ai-input" class="ai-input"
+                               placeholder="اكتب سؤالك هنا..."
+                               onkeydown="if(event.key==='Enter') sendAIMessage()">
+                        <button class="ai-send-btn" id="ai-send-btn" onclick="sendAIMessage()">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1410,6 +1522,10 @@
                 const q = STATE.activeQuestions[STATE.qIndex];
                 STATE.selectedOption = null;
                 document.getElementById('feedback-sec').style.display = 'none';
+                const _aiBtn = document.getElementById('ai-chat-btn');
+                const _aiCont = document.getElementById('ai-chat-container');
+                if(_aiBtn) _aiBtn.style.display = 'none';
+                if(_aiCont) _aiCont.style.display = 'none';
                 document.getElementById('btn-check').style.display = 'block';
                 document.getElementById('btn-check').disabled = true;
                 document.getElementById('btn-next').style.display = 'none';
@@ -1537,6 +1653,15 @@
                     fbBox.className = 'feedback-box wrong-msg';
                     fbTitle.innerHTML = '<i class="fa-solid fa-times-circle"></i> إجابة غير صحيحة';
                     fbText.innerHTML = `لقد اخترت <strong>${escapeHTML(STATE.selectedOption)}</strong>. <strong>الإجابة الصحيحة هي ${escapeHTML(q.correct)}.</strong><br><br><span style="color:var(--text-muted)">الشرح:</span> ${escapeHTML(q.explanation || '')}`;
+                    // Show AI Chat button on wrong answer
+                    const aiBtn = document.getElementById('ai-chat-btn');
+                    const aiContainer = document.getElementById('ai-chat-container');
+                    if(aiBtn) { aiBtn.style.display = 'block'; }
+                    if(aiContainer) { aiContainer.style.display = 'none'; }
+                    // Reset chat state for new question
+                    AI_STATE.messages = [];
+                    AI_STATE.currentQ = q;
+                    document.getElementById('ai-messages').innerHTML = '';
                 }
 
                 fbStrategy.innerHTML = escapeHTML(q.strategy || '');
@@ -1583,6 +1708,92 @@
                 }
             }
         };
+
+        // ===== AI CHAT =====
+        const WORKER_URL = 'https://steep-rain-e16f.i3892432848.workers.dev/';
+
+        const AI_STATE = {
+            messages: [],
+            currentQ: null,
+            isLoading: false
+        };
+
+        function openAIChat() {
+            const btn = document.getElementById('ai-chat-btn');
+            const container = document.getElementById('ai-chat-container');
+            btn.style.display = 'none';
+            container.style.display = 'block';
+
+            // Send opening message from AI
+            const q = AI_STATE.currentQ;
+            if(!q) return;
+
+            const openingMsg = `مرحباً! سأساعدك في فهم هذه المسألة. 😊\nلقد اخترت ${escapeHTML(q.correct === STATE.selectedOption ? q.correct : (STATE.selectedOption || '؟'))} والإجابة الصحيحة هي ${escapeHTML(q.correct)}.\n\nما الجزء الذي يحتاج توضيحاً أكثر؟`;
+            appendMessage('ai', openingMsg);
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('ai-messages');
+            const div = document.createElement('div');
+            div.className = `ai-message ${role}`;
+            div.textContent = text;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendAIMessage() {
+            const input = document.getElementById('ai-input');
+            const sendBtn = document.getElementById('ai-send-btn');
+            const text = input.value.trim();
+            if(!text || AI_STATE.isLoading) return;
+
+            input.value = '';
+            appendMessage('user', text);
+
+            AI_STATE.messages.push({ role: 'user', content: text });
+            AI_STATE.isLoading = true;
+            sendBtn.disabled = true;
+
+            // Typing indicator
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'ai-message ai ai-typing';
+            typingDiv.textContent = 'المساعد يكتب...';
+            typingDiv.id = 'ai-typing';
+            document.getElementById('ai-messages').appendChild(typingDiv);
+            document.getElementById('ai-messages').scrollTop = 99999;
+
+            try {
+                const q = AI_STATE.currentQ;
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wrongAnswer: STATE.selectedOption || '؟',
+                        correctAnswer: q.correct,
+                        explanation: q.explanation || '',
+                        strategy: q.strategy || '',
+                        messages: AI_STATE.messages
+                    })
+                });
+
+                const data = await response.json();
+                const reply = data.reply || 'عذراً، حدث خطأ. حاول مجدداً.';
+
+                document.getElementById('ai-typing')?.remove();
+                appendMessage('ai', reply);
+                AI_STATE.messages.push({ role: 'assistant', content: reply });
+
+            } catch(err) {
+                document.getElementById('ai-typing')?.remove();
+                appendMessage('ai', 'عذراً، تعذّر الاتصال بالمساعد. تحقق من الإنترنت وحاول مجدداً.');
+                console.error('AI Chat error:', err);
+            } finally {
+                AI_STATE.isLoading = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+        // ===== END AI CHAT =====
 
         window.onload = () => app.init();
         // Hide app until Firebase Auth resolves (onAuthStateChanged handles routing)
